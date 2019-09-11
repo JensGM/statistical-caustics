@@ -27,7 +27,7 @@ constexpr auto recp_root_2 = 0.70710678118f; // 1 / sqrt(2)
 constexpr auto A = 1.0f; // arbitrary amplitude
 constexpr auto L = 70.0f; // field dimension (i think in meters)
 constexpr auto N = 256; // grid resolution
-constexpr auto w = vec2{10.0f, 0.0f}; // horizontal wind vector
+constexpr auto w = vec2{6.0f, 5.0f}; // horizontal wind vector
 
 using Field = std::array<std::array<complex<float>, N>, N>;
 
@@ -60,9 +60,10 @@ Field fft(const Field& field) {
                   i = out[idx][1];
             result[n][m] = {r, i};
 
-            // HACK
-            result[n][m] *= n % 2 == 0 ? 1.0f : -1.0f;
-            result[n][m] *= m % 2 == 0 ? 1.0f : -1.0f;
+            // HACK, something something grid translation.
+            // https://www.keithlantz.net/2011/11/ocean-simulation-part-two-using-the-fast-fourier-transform/
+            auto sign = (n + m) % 2 == 0 ? 1.0f : -1.0f;
+            result[n][m] *= sign;
         }
     }
 
@@ -85,7 +86,7 @@ auto gaussian() {
     return dist(gen);
 }
 
-auto phillips(vec2 k) {
+auto 🌊(vec2 k) {
     // max_wave is the second L in the paper. There are two. In the same font.
     auto windspeed = length(w);
     auto max_wave = windspeed * windspeed / g;
@@ -93,28 +94,28 @@ auto phillips(vec2 k) {
     auto k_unit = normalize(k);
     auto w_unit = normalize(w);
     auto kw = dot(k_unit, w_unit);
+    auto kw2 = kw * kw;
+    auto kw4 = kw2 * kw2;
+    auto kw6 = kw4 * kw2; // Modification in the paper
 
     auto k_length = length(k);
-    auto k_2 = k_length * k_length;
-    auto k_4 = k_2 * k_2;
+    auto k2 = k_length * k_length;
+    auto k4 = k2 * k2;
 
     // k_max_ws2 is (kL)^2 in the paper.
     auto k_max_ws = k_length * max_wave;
     auto k_max_ws2 = k_max_ws * k_max_ws;
-    auto k_max_ws4 = k_max_ws2 * k_max_ws2;
-    auto k_max_ws8 = k_max_ws4 * k_max_ws4;
-    auto k_max_ws16 = k_max_ws8 * k_max_ws8;
 
     // We return a complex number to allow sqrt of negative numbers
-    return complex{A * kw * exp(-1.0f / k_max_ws16) / k_4, 0.0f};
+    return complex{A * kw6 * exp(-1.0f / k_max_ws2) / k4, 0.0f};
 }
 
-auto h0(vec2 k) {
-    complex E{gaussian(), gaussian()};
-    return recp_root_2 * E * sqrt(phillips(k));
+auto hₒ(vec2 k) {
+    complex ξ{gaussian(), gaussian()};
+    return recp_root_2 * ξ * sqrt(🌊(k)); // √ is not in the allowed range...
 }
 
-auto w0(vec2 k) {
+auto w₀(vec2 k) {
     return sqrt(g * length(k));
 }
 
@@ -125,30 +126,37 @@ int main() {
     for (int n = 0; n < N; ++n) {
         for (int m = 0; m < N; ++m) {
             auto k = idx2k(n, m);
-            spectrum[n][m] =      h0( k);
-            specconj[n][m] = conj(h0(-k));
+            spectrum[n][m] =      hₒ( k);
+            specconj[n][m] = conj(hₒ(-k));
         }
     }
 
-    Field frequencies;
+    float t = 1.0f;
 
-    for (int n = 0; n < N; ++n) {
-        for (int m = 0; m < N; ++m) {
-            auto k = idx2k(n, m);
-            frequencies[n][m] = spectrum[n][m] * exp(-1.0if * w0(k) * 1.0f)
-                              + specconj[n][m] * exp( 1.0if * w0(k) * 1.0f);
+    for (int f = 0; f < 240; ++f) {
+        t += 60.f / 1000.f;
+        Field frequencies;
+
+        for (int n = 0; n < N; ++n) {
+            for (int m = 0; m < N; ++m) {
+                auto k = idx2k(n, m);
+                auto wt = w₀(k) * t;
+                auto c₀ = cos( wt) + 1.0if * sin( wt);
+                auto c₁ = cos(-wt) + 1.0if * sin(-wt);
+                frequencies[n][m] = spectrum[n][m] * c₀ + specconj[n][m] * c₁;
+            }
         }
-    }
 
-    Field heights = fft(frequencies);
+        Field heights = fft(frequencies);
 
-    for (int n = 0; n < N; ++n) {
-        for (int m = 0; m < N; ++m) {
-            std::cout << real(heights[n][m]) << "\t";
+        for (int n = 0; n < N; ++n) {
+            for (int m = 0; m < N; ++m) {
+                std::cout << real(heights[n][m]) << "\t";
+            }
+            std::cout << '\n';
         }
-        std::cout << '\n';
     }
 }
 
-static_assert(std::is_same_v<complex<float>, decltype(h0(vec2{}))>,
+static_assert(std::is_same_v<complex<float>, decltype(hₒ(vec2{}))>,
               "The final return type is not of type complex<float>");
