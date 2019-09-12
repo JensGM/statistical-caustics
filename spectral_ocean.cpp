@@ -9,10 +9,12 @@
 
 using namespace std::literals::complex_literals;
 using
+    std::abs,
     std::complex,
     std::conj,
     std::exp,
     std::imag,
+    std::pow,
     std::real,
     std::sqrt,
 
@@ -21,13 +23,13 @@ using
     glm::length,
     glm::normalize;
 
-constexpr auto g = 9.81f; // gravity
-constexpr auto pi = 3.14159265359f;
-constexpr auto recp_root_2 = 0.70710678118f; // 1 / sqrt(2)
-constexpr auto A = 1.0f; // arbitrary amplitude
+constexpr auto 𝑔 = 9.81f; // gravity
+constexpr auto π = 3.14159265359f;
+constexpr auto recp_root_2 = 0.70710678118f; // 1/sqrt(2),sqrt is not constexpr
+constexpr auto 𝐴 = 1.0f; // arbitrary amplitude
 constexpr auto L = 70.0f; // field dimension (i think in meters)
 constexpr auto N = 256; // grid resolution
-constexpr auto w = vec2{6.0f, 5.0f}; // horizontal wind vector
+constexpr auto 𝑤 = vec2{6.0f, 5.0f}; // horizontal wind vector
 
 using Field = std::array<std::array<complex<float>, N>, N>;
 
@@ -76,7 +78,7 @@ Field fft(const Field& field) {
 auto idx2k(int i, int k) {
     auto n = remap_range<float>(i, 0, N - 1, -N / 2, N / 2);
     auto m = remap_range<float>(k, 0, N - 1, -N / 2, N / 2);
-    return 2.0f * pi * vec2{n, m} / L;
+    return 2.0f * π * vec2{n, m} / L;
 }
 
 auto gaussian() {
@@ -86,68 +88,69 @@ auto gaussian() {
     return dist(gen);
 }
 
-auto 🌊(vec2 k) {
-    // max_wave is the second L in the paper. There are two. In the same font.
-    auto windspeed = length(w);
-    auto max_wave = windspeed * windspeed / g;
+/**
+ * Phillips frequency for 𝐤
+ */
+auto Ph(vec2 𝐤) {
+    auto 𝑉 = length(𝑤);
+    auto 𝐿 = 𝑉 * 𝑉 / 𝑔; // Largets possible wave
 
-    auto k_unit = normalize(k);
-    auto w_unit = normalize(w);
-    auto kw = dot(k_unit, w_unit);
-    auto kw2 = kw * kw;
-    auto kw4 = kw2 * kw2;
-    auto kw6 = kw4 * kw2; // Modification in the paper
+    auto ḱ = normalize(𝐤);
+    auto ẃ = normalize(𝑤);
 
-    auto k_length = length(k);
-    auto k2 = k_length * k_length;
-    auto k4 = k2 * k2;
+    // Modification in the paper ḱ·ẃ² -> ḱ·ẃ⁶
+    auto ḱ·ẃ⁶ = pow(abs(dot(ḱ, ẃ)), 6.0f); // Note, dot product to power 6
+    auto 𝑘 = length(𝐤);
+    auto 𝑘⁴ = pow(𝑘, 4.0f);
+    auto 𝑘𝐿² = pow(𝑘 * 𝐿, 2.0f); // Note, product to power of 2
 
-    // k_max_ws2 is (kL)^2 in the paper.
-    auto k_max_ws = k_length * max_wave;
-    auto k_max_ws2 = k_max_ws * k_max_ws;
-
-    // We return a complex number to allow sqrt of negative numbers
-    return complex{A * kw6 * exp(-1.0f / k_max_ws2) / k4, 0.0f};
+    return 𝐴 * exp(-1.0f / 𝑘𝐿²) / 𝑘⁴ * ḱ·ẃ⁶;
 }
 
-auto hₒ(vec2 k) {
+/**
+ * Fourier amplitude, ℎₒ with a tilde in the paper
+ */
+auto ℎₒ(vec2 𝐤) {
     complex ξ{gaussian(), gaussian()};
-    return recp_root_2 * ξ * sqrt(🌊(k)); // √ is not in the allowed range...
+    return recp_root_2 * ξ * sqrt(Ph(𝐤));
 }
 
-auto w₀(vec2 k) {
-    return sqrt(g * length(k));
+/**
+ * Dispersion relation
+ */
+auto ω(vec2 𝐤) {
+    return sqrt(𝑔 * length(𝐤));
 }
 
 int main() {
-    Field spectrum;
-    Field specconj;
+    Field 𝐇₀₊;
+    Field 𝐇₀₋; // Complex conjugate
 
     for (int n = 0; n < N; ++n) {
         for (int m = 0; m < N; ++m) {
-            auto k = idx2k(n, m);
-            spectrum[n][m] =      hₒ( k);
-            specconj[n][m] = conj(hₒ(-k));
+            auto 𝐤 = idx2k(n, m);
+            𝐇₀₊[n][m] =      ℎₒ( 𝐤);
+            𝐇₀₋[n][m] = conj(ℎₒ(-𝐤));
         }
     }
 
-    float t = 1.0f;
+    float t = 0.0f;
 
     for (int f = 0; f < 240; ++f) {
         t += 60.f / 1000.f;
-        Field frequencies;
+        Field 𝐇;
 
         for (int n = 0; n < N; ++n) {
             for (int m = 0; m < N; ++m) {
-                auto k = idx2k(n, m);
-                auto wt = w₀(k) * t;
-                auto c₀ = cos( wt) + 1.0if * sin( wt);
-                auto c₁ = cos(-wt) + 1.0if * sin(-wt);
-                frequencies[n][m] = spectrum[n][m] * c₀ + specconj[n][m] * c₁;
+                auto 𝐤 = idx2k(n, m);
+                auto ωt = ω(𝐤) * t;
+                auto c₀ = cos( ωt) + 1.0if * sin( ωt);
+                auto c₁ = cos(-ωt) + 1.0if * sin(-ωt);
+                𝐇[n][m] = 𝐇₀₊[n][m] * c₀ + 𝐇₀₋[n][m] * c₁;
             }
         }
 
-        Field heights = fft(frequencies);
+        Field heights = fft(𝐇);
 
         for (int n = 0; n < N; ++n) {
             for (int m = 0; m < N; ++m) {
@@ -158,5 +161,5 @@ int main() {
     }
 }
 
-static_assert(std::is_same_v<complex<float>, decltype(hₒ(vec2{}))>,
+static_assert(std::is_same_v<complex<float>, decltype(ℎₒ(vec2{}))>,
               "The final return type is not of type complex<float>");
