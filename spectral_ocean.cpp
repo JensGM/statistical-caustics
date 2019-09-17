@@ -1,3 +1,12 @@
+/* Implementation of the ocean water simulation described by Jerry Tessendorf in
+ * http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.161.9102&rep=rep1&type=pdf
+ *
+ * The idea of this implementation is to keep the code as close to the paper as
+ * possible.
+ *
+ * Warning, unicode in source code 🌊
+ */
+
 #include <array>
 #include <cmath>
 #include <complex>
