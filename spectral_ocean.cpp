@@ -1,12 +1,3 @@
-/* Implementation of the ocean water simulation described by Jerry Tessendorf in
- * http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.161.9102&rep=rep1&type=pdf
- *
- * The idea of this implementation is to keep the code as close to the paper as
- * possible.
- *
- * Warning, unicode in source code 🌊
- */
-
 #include <array>
 #include <cmath>
 #include <complex>
@@ -47,10 +38,9 @@ auto remap_range(T v, T lo0, T hi0, T lo1, T hi1) {
     return lo1 + (v - lo0) * (hi1 - lo1) / (hi0 - lo0);
 }
 
-Field fft(const Field& field) {
+auto fft(const Field& field) {
     auto* in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N * N);
     auto* out = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * N * N);
-    auto plan = fftw_plan_dft_2d(N, N, in, out, FFTW_BACKWARD, FFTW_MEASURE);
 
     for (int n = 0; n < N; ++n) {
         for (int m = 0; m < N; ++m) {
@@ -60,8 +50,8 @@ Field fft(const Field& field) {
         }
     }
 
+    auto plan = fftw_plan_dft_2d(N, N, in, out, FFTW_BACKWARD, FFTW_MEASURE);
     fftw_execute(plan);
-    fftw_destroy_plan(plan);
 
     Field result;
     for (int n = 0; n < N; ++n) {
@@ -78,6 +68,7 @@ Field fft(const Field& field) {
         }
     }
 
+    fftw_destroy_plan(plan);
     fftw_free(in);
     fftw_free(out);
 
